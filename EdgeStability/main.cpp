@@ -3,29 +3,41 @@
 #include <vector>
 #include <numeric>
 
+struct ChildRef;
 using NodeID = size_t;
-using Node = std::vector<NodeID>;
+using Node = std::vector<ChildRef>;
 using Graph = std::vector<Node>;
 using Edges = std::vector<std::pair<NodeID, NodeID>>;
 using Requests = std::vector<size_t>;
 
+struct ChildRef {
+    NodeID nodeID {};
+    mutable size_t childCount {};
+    size_t countNodes(const Graph&, NodeID parentID) const;
+};
+
 size_t countNodes(const Graph& graph, NodeID nodeID, NodeID fromID) {
     size_t count = 1;
-    for (const NodeID childID : graph[nodeID]) {
-        if (childID != fromID)
-            count += countNodes(graph, childID, nodeID);
+    for (const ChildRef& child : graph[nodeID]) {
+        if (child.nodeID != fromID)
+            count += child.countNodes(graph, nodeID);
     }
     return count;
 }
 
+size_t ChildRef::countNodes(const Graph& graph, NodeID parentID) const {
+    if (!childCount)
+        childCount = ::countNodes(graph, nodeID, parentID);
+    return childCount;
+}
+
 int main() {
 
-#if 0
+#if 10
     std::istream& input = std::cin;
 #else
-    std::istringstream input("0 0 0");
+    std::istringstream input("3 2 1 2 2 3 1 1");
 #endif
-
     size_t n{}, m{};
 
     input >> n >> m;
@@ -36,8 +48,8 @@ int main() {
     for (size_t i = 1; i <= m; ++i) {
         NodeID from{}, to{};
         input >> from >> to;
-        graph[from].push_back(to);
-        graph[to].push_back(from);
+        graph[from].push_back({to});
+        graph[to].push_back({from});
         edges[i] = {from, to};
     }
 
