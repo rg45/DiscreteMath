@@ -1,35 +1,64 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
-#include <numeric>
 
-struct ChildRef;
+namespace {
+
 using NodeID = size_t;
-using Node = std::vector<ChildRef>;
-using Graph = std::vector<Node>;
-using Edges = std::vector<std::pair<NodeID, NodeID>>;
-using Requests = std::vector<size_t>;
+using EdgeID = size_t;
+using LinkID = size_t;
 
-struct ChildRef {
-    NodeID nodeID {};
-    mutable size_t childCount {};
-    size_t countNodes(const Graph&, NodeID parentID) const;
+LinkID getReverseLink(LinkID linkID) { return linkID ^ 1; }
+LinkID getFirstLink(EdgeID edgeID) { return edgeID << 1; }
+LinkID getSecondLink(EdgeID edgeID) { return getReverseLink(getFirstLink(edgeID)); }
+EdgeID getEdge(LinkID linkID) { return linkID >> 1; }
+
+class Graph {
+public:
+
+    Graph(size_t nodeCount, size_t edgeCount)
+        : m_nodes(nodeCount + 1)
+        , m_links((edgeCount + 1) * 2) {
+    }
+
+    bool IsConnected() const { return GetEdgeCount() == (GetNodeCount() - 1); }
+    size_t GetNodeCount() const { return m_nodes.size() - 1; }
+    size_t GetEdgeCount() const { return m_links.size() / 2 - 1; }
+    NodeID GetTargetNode(LinkID linkID) const { return m_links[linkID].targetNodeID; }
+    size_t GetAdjacentCount(NodeID nodeID) const { return m_nodes[nodeID].size(); }
+
+    void AddEdge(EdgeID edgeID, NodeID firstNodeID, NodeID secondNodeID) {
+        m_nodes[firstNodeID].push_back(getFirstLink(edgeID));
+        m_nodes[secondNodeID].push_back(getSecondLink(edgeID));
+        m_links[getFirstLink(edgeID)].targetNodeID = secondNodeID;
+        m_links[getSecondLink(edgeID)].targetNodeID = firstNodeID;
+    }
+
+    size_t CountReachableNodes(LinkID linkID) {
+        auto& link = m_links[linkID];
+        if (!link.reachableCount) {
+            link.reachableCount = 1;
+            const auto& node = m_nodes[link.targetNodeID];
+            for (const LinkID childLinkID : node) {
+                if (childLinkID != getReverseLink(linkID)) {
+                    link.reachableCount += CountReachableNodes(childLinkID);
+                }
+            }
+        }
+        return link.reachableCount;
+    }
+
+private:
+    using Node = std::vector<LinkID>;
+    struct Link {
+        NodeID targetNodeID{};
+        size_t reachableCount{};
+    };
+    std::vector<Node> m_nodes;
+    std::vector<Link> m_links;
 };
 
-size_t countNodes(const Graph& graph, NodeID nodeID, NodeID fromID) {
-    size_t count = 1;
-    for (const ChildRef& child : graph[nodeID]) {
-        if (child.nodeID != fromID)
-            count += child.countNodes(graph, nodeID);
-    }
-    return count;
-}
-
-size_t ChildRef::countNodes(const Graph& graph, NodeID parentID) const {
-    if (!childCount)
-        childCount = ::countNodes(graph, nodeID, parentID);
-    return childCount;
-}
+} // namespace
 
 int main() {
 
@@ -42,32 +71,41 @@ int main() {
 
     input >> n >> m;
 
-    Graph graph(n + 1);
-    Edges edges(m + 1);
+    Graph graph(n, m);
 
-    for (size_t i = 1; i <= m; ++i) {
+    for (EdgeID edgeID = 1; edgeID <= m; ++edgeID) {
         NodeID from{}, to{};
         input >> from >> to;
-        graph[from].push_back({to});
-        graph[to].push_back({from});
-        edges[i] = {from, to};
+        graph.AddEdge(edgeID, from, to);
     }
 
     size_t q{};
-
     input >> q;
 
-    Requests requests(q);
-
-    for (size_t i = 0; i < q; ++i) {
-        input >> requests[i];
+    if (graph.IsConnected()) {
+        for (size_t i = 0; i < q; ++ i) {
+            EdgeID edgeID {};
+            input >> edgeID;
+            const LinkID link1 = getFirstLink(edgeID);
+            const LinkID link2 = getSecondLink(edgeID);
+            const size_t adjCount1 = graph.GetAdjacentCount(graph.GetTargetNode(link1));
+            const size_t adjCount2 = graph.GetAdjacentCount(graph.GetTargetNode(link2));
+            const size_t reachCount1 = adjCount1 < adjCount2 ?
+                graph.CountReachableNodes(link1) :
+                graph.CountReachableNodes(link2);
+            const size_t reachCount2 = n - reachCount1;
+            const size_t pathCount = reachCount1 * reachCount2;
+            std::cout << " " << pathCount;
+        }
     }
-
-    for (size_t edge : requests) {
-        const NodeID first = edges[edge].first;
-        const NodeID second = edges[edge].second;
-        const auto n1 = countNodes(graph, first, second);
-        const auto n2 = countNodes(graph, second, first);
-        std::cout << n1 * n2 << " ";
+    else {
+        for (size_t i = 0; i < q; ++i) {
+            EdgeID edgeID{};
+            input >> edgeID;
+            const size_t reachCount1 = graph.CountReachableNodes(getFirstLink(edgeID));
+            const size_t reachCount2 = graph.CountReachableNodes(getSecondLink(edgeID));
+            const size_t pathCount = reachCount1 * reachCount2;
+            std::cout << " " << pathCount;
+        }
     }
 }
